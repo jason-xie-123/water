@@ -3,6 +3,7 @@ package water
 import (
 	"errors"
 	"io"
+	"os"
 )
 
 // Interface is a TUN/TAP interface.
@@ -13,7 +14,8 @@ import (
 type Interface struct {
 	isTAP bool
 	io.ReadWriteCloser
-	name string
+	tunFile *os.File
+	name    string
 }
 
 // DeviceType is the type for specifying device types.
@@ -77,4 +79,8 @@ func (ifce *Interface) IsTAP() bool {
 // Name returns the interface name of ifce, e.g. tun0, tap1, tun0, etc..
 func (ifce *Interface) Name() string {
 	return ifce.name
+}
+
+func (ifce *Interface) TunFile() *os.File {
+	return ifce.tunFile
 }

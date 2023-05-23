@@ -145,12 +145,15 @@ func openDevSystem(config Config) (ifce *Interface, err error) {
 		return nil, fmt.Errorf("setting non-blocking error")
 	}
 
+	file := os.NewFile(uintptr(fd), string(ifName.name[:]))
+
 	return &Interface{
 		isTAP: false,
 		name:  string(ifName.name[:ifNameSize-1 /* -1 is for \0 */]),
 		ReadWriteCloser: &tunReadCloser{
-			f: os.NewFile(uintptr(fd), string(ifName.name[:])),
+			f: file,
 		},
+		tunFile: file,
 	}, nil
 }
 
@@ -200,9 +203,12 @@ func openDevTunTapOSX(config Config) (ifce *Interface, err error) {
 	}
 	syscall.Close(socketFD)
 
+	file := os.NewFile(uintptr(fd), "tun")
+
 	return &Interface{
 		isTAP:           config.DeviceType == TAP,
-		ReadWriteCloser: os.NewFile(uintptr(fd), "tun"),
+		ReadWriteCloser: file,
+		tunFile:         file,
 		name:            config.Name,
 	}, nil
 }
