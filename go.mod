@@ -1,3 +1,3 @@
-module github.com/xiechao/water
+module water
 
 go 1.19
