@@ -1,6 +1,7 @@
 package water
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -147,11 +148,14 @@ func openDevSystem(config Config) (ifce *Interface, err error) {
 
 	file := os.NewFile(uintptr(fd), string(ifName.name[:]))
 
+	reader := bufio.NewReader(file)
+
 	return &Interface{
 		isTAP: false,
 		name:  string(ifName.name[:ifNameSize-1 /* -1 is for \0 */]),
 		ReadWriteCloser: &tunReadCloser{
-			f: file,
+			f:             file,
+			readerHandler: reader,
 		},
 		tunFile: file,
 	}, nil
@@ -218,6 +222,8 @@ func openDevTunTapOSX(config Config) (ifce *Interface, err error) {
 type tunReadCloser struct {
 	f io.ReadWriteCloser
 
+	readerHandler *bufio.Reader
+
 	rMu  sync.Mutex
 	rBuf []byte
 
@@ -236,7 +242,8 @@ func (t *tunReadCloser) Read(to []byte) (int, error) {
 	}
 	t.rBuf = t.rBuf[:len(to)+4]
 
-	n, err := t.f.Read(t.rBuf)
+	// n, err := t.f.Read(t.rBuf)
+	n, err := t.readerHandler.Read(t.rBuf)
 	copy(to, t.rBuf[4:])
 	return n - 4, err
 }
