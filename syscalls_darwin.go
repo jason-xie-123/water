@@ -2,6 +2,7 @@ package water
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -148,16 +150,22 @@ func openDevSystem(config Config) (ifce *Interface, err error) {
 
 	file := os.NewFile(uintptr(fd), string(ifName.name[:]))
 
-	reader := bufio.NewReader(file)
+	reader := bufio.NewReaderSize(file, 200*1024)
+	writer := bufio.NewWriterSize(file, 5*1024)
+
+	tun := &tunReadCloser{
+		f:             file,
+		readerHandler: reader,
+		writerHandler: writer,
+	}
+
+	tun.startWriterFlushTask()
 
 	return &Interface{
-		isTAP: false,
-		name:  string(ifName.name[:ifNameSize-1 /* -1 is for \0 */]),
-		ReadWriteCloser: &tunReadCloser{
-			f:             file,
-			readerHandler: reader,
-		},
-		tunFile: file,
+		isTAP:           false,
+		name:            string(ifName.name[:ifNameSize-1 /* -1 is for \0 */]),
+		ReadWriteCloser: tun,
+		tunFile:         file,
 	}, nil
 }
 
@@ -222,13 +230,17 @@ func openDevTunTapOSX(config Config) (ifce *Interface, err error) {
 type tunReadCloser struct {
 	f io.ReadWriteCloser
 
+	rMu           sync.Mutex
+	rBuf          []byte
 	readerHandler *bufio.Reader
 
-	rMu  sync.Mutex
-	rBuf []byte
+	wMu           sync.Mutex
+	wBuf          []byte
+	writerHandler *bufio.Writer
+	lastFlushTime time.Time
 
-	wMu  sync.Mutex
-	wBuf []byte
+	flushCtx       context.Context
+	flushCancelFun context.CancelFunc
 }
 
 var _ io.ReadWriteCloser = (*tunReadCloser)(nil)
@@ -274,10 +286,52 @@ func (t *tunReadCloser) Write(from []byte) (int, error) {
 
 	copy(t.wBuf[4:], from)
 
+	// 此处通过 bufio.Writer 去提升写入速度并不可以, 因为 t.f 并不是标准的文件
+	// n, err := t.writerHandler.Write(t.wBuf)
+	// if time.Since(t.lastFlushTime).Milliseconds() > 5 {
+	// 	t.writerHandler.Flush()
+	// 	t.lastFlushTime = time.Now()
+	// }
+
 	n, err := t.f.Write(t.wBuf)
 	return n - 4, err
 }
 
+func (t *tunReadCloser) startWriterFlushTask() {
+	// t.flushCtx, t.flushCancelFun = context.WithCancel(context.Background())
+
+	// go func(ctx context.Context) {
+	// 	keepAliveTicker := time.NewTicker(5 * time.Millisecond)
+	// 	for {
+	// 		select {
+	// 		case <-ctx.Done():
+	// 			keepAliveTicker.Stop()
+	// 			return
+	// 		case <-keepAliveTicker.C:
+	// 			t.wMu.Lock()
+	// 			if t.writerHandler != nil {
+	// 				t.writerHandler.Flush()
+	// 				t.lastFlushTime = time.Now()
+	// 			}
+	// 			t.wMu.Unlock()
+	// 		}
+	// 	}
+	// }(t.flushCtx)
+}
+
 func (t *tunReadCloser) Close() error {
+	// if t.flushCtx.Err() != context.Canceled {
+	// 	t.flushCancelFun()
+	// }
+
+	// t.rMu.Lock()
+	// defer t.rMu.Unlock()
+
+	// t.wMu.Lock()
+	// defer t.wMu.Unlock()
+
+	// t.writerHandler.Flush()
+	// t.writerHandler = nil
+
 	return t.f.Close()
 }
