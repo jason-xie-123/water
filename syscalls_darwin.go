@@ -150,13 +150,13 @@ func openDevSystem(config Config) (ifce *Interface, err error) {
 
 	file := os.NewFile(uintptr(fd), string(ifName.name[:]))
 
-	reader := bufio.NewReaderSize(file, 200*1024)
-	writer := bufio.NewWriterSize(file, 5*1024)
+	// reader := bufio.NewReaderSize(file, 200*1024)
+	// writer := bufio.NewWriterSize(file, 5*1024)
 
 	tun := &tunReadCloser{
-		f:             file,
-		readerHandler: reader,
-		writerHandler: writer,
+		f: file,
+		// readerHandler: reader,
+		// writerHandler: writer,
 	}
 
 	tun.startWriterFlushTask()
@@ -254,8 +254,8 @@ func (t *tunReadCloser) Read(to []byte) (int, error) {
 	}
 	t.rBuf = t.rBuf[:len(to)+4]
 
-	// n, err := t.f.Read(t.rBuf)
-	n, err := t.readerHandler.Read(t.rBuf)
+	n, err := t.f.Read(t.rBuf)
+	// n, err := t.readerHandler.Read(t.rBuf)
 	copy(to, t.rBuf[4:])
 	return n - 4, err
 }
